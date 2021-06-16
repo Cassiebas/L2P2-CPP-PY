@@ -99,48 +99,27 @@ char i2c_read(uint8_t reg_address) {
 
 }
 
-uint16_t merge_bytes( uint8_t LSB, uint8_t MSB) {
-	return  (uint16_t) ((( LSB & 0xFF) << 8) | MSB);
-}
-
-// 16 bits data on the MPU6050 are in two registers,
-// encoded in two complement. So we convert those to int16_t
-/*int16_t two_complement_to_int( uint8_t LSB, uint8_t MSB) {
-	int16_t signed_int = 0;
-	uint16_t word;
-
-	word = merge_bytes(LSB, MSB);
-
-	if((word & 0x8000) == 0x8000) { // negative number
-		signed_int = (int16_t) -(~word);
-	} else {
-		signed_int = (int16_t) (word & 0x7fff);
-	}
-
-	return signed_int;
-}*/
-
-float gr_off = 0;
-float gp_off = 0;
+float gx_off = 0;
 float gy_off = 0;
+float gz_off = 0;
 
 void getOffsets() {
 	float gyro_off[3]; //Temporary storage
-
-	float gr_off = 0, gp_off = 0, gy_off = 0; //Initialize the offsets to zero
-  printf("Calculating offsets!\n");
-	for (int i = 0; i < 1000; i++) { //Use loop to average offsets
-		gyro_off[0] = i2c_read(0x43) << 8 | i2c_read(0x44); //Read X registers
-    gyro_off[1] = i2c_read(0x45) << 8 | i2c_read(0x46); //Read Y registers
-    gyro_off[2] = i2c_read(0x47) << 8 | i2c_read(0x48); //Read Z registers
-		gr_off = gr_off + gyro_off[0];
-    gp_off = gp_off + gyro_off[1]; 
-    gy_off = gy_off + gyro_off[2]; //Add to sum
+	gx_off = 0, gy_off = 0, gz_off = 0; //Initialize the offsets to zero
+	
+	printf("Calculating offsets!\n");
+	for (int i = 0; i < 1000; i++) {
+		gyro_off[0] = i2c_read(0x43) << 8 | i2c_read(0x44); //read X registers
+    		gyro_off[1] = i2c_read(0x45) << 8 | i2c_read(0x46); //read Y registers
+    		gyro_off[2] = i2c_read(0x47) << 8 | i2c_read(0x48); //read Z registers
+		gx_off = gr_off + gyro_off[0]; //add x
+		gy_off = gy_off + gyro_off[1]; //add z
+    		gz_off = gy_off + gyro_off[2]; //add y
 
 	}
 
-	gr_off = gr_off / 1000, gp_off = gp_off / 1000, gy_off = gy_off / 1000; //Divide by number of loops (to average)
-  printf("Offsets obtained!\n");
+	gx_off = gx_off / 1000, gy_off = gy_off / 1000, gz_off = gz_off / 1000; //divide by number of loops (to average)
+	printf("Offsets obtained!\n");
 }
 
 
@@ -159,44 +138,40 @@ int16_t two_complement_to_int( uint16_t word) {
 
 void MPUinit()
 {
-  i2c_write(REG_PWR_MGMT_1, 0x01);  //confiugrated for gyro use (X)
+  	i2c_write(REG_PWR_MGMT_1, 0x01);  //confiugrated for gyro use (X)
 	i2c_write(REG_ACCEL_CONFIG, 0x00);  //leave at 2g full scale range
 	i2c_write(REG_SMPRT_DIV, 0x01);   //sample rate divider = gyro output rate / (1 + smplrt_div) 
 	i2c_write(REG_CONFIGS, 0x00);      //usage of fsync, frame synchronization 
-  i2c_write(REG_GYRO_CONFIG, 0b00011000);
+  	i2c_write(REG_GYRO_CONFIG, 0b00011000);
 	i2c_write(REG_FIFO_EN, 0x00);     //was 88 temp and accel, try 70 for gyro xyz, 8 for accel. keeps on overflowing.
 	i2c_write(REG_USER_CTRL, 0x44);   //driven by i2c master, reset fifo
 }
 
 
 int main(int argc, char *argv[]) {
-  printf("balans\n");
+	printf("balans\n");
 	char bus_filename[250];
 	//char accel_x_h,accel_x_l,accel_y_h,accel_y_l,accel_z_h,accel_z_l;
 	//uint16_t fifo_len = 0;
 	float _accel_angle[2];
   
-  
-	//int16_t temp = 0;
-  
-  
-	snprintf(bus_filename, 250, "/dev/i2c-1");
-	file = open(bus_filename, O_RDWR);
+	snprintf(bus_filename, 250, "/dev/i2c-1"); 	//put text into a buffer
+	file = open(bus_filename, O_RDWR);		//O_RDWR read write
+	
 	if (file < 0) {
-		/* ERROR HANDLING; you can check errno to see what went wrong */
+		/* error */
 		exit(1);
 	}
 
-
-	if (ioctl(file, I2C_SLAVE, MPU6050_I2C_ADDR) < 0) {
-		/* ERROR HANDLING; you can check errno to see what went wrong */
+	if (ioctl(file, I2C_SLAVE, MPU6050_I2C_ADDR) < 0) { //ioctl(filedescriptor, request, argument) performs controlfunctions on streamdevices
+		/* error */
 		exit(1);
 	}
   
-  MPUinit();
+	MPUinit(); //call initialisation
   
-  printf("Entering getoffsets()\n");
-  //getOffsets();
+ 	printf("Entering getoffsets()\n");
+  	//getOffsets();
   
 
 	/*while(fifo_len != 1024) { //fifo keeps overflowing for no reason?
@@ -208,66 +183,72 @@ int main(int argc, char *argv[]) {
 			printf("fifo overflow !\n");
 			i2c_write(REG_USER_CTRL, 0x44);
 			continue;
-		}*/
-    
-    while(1)
-    {
-
-			/*
-      accel_x_h = i2c_read(REG_FIFO);
-			accel_x_l = i2c_read(REG_FIFO);
-			accel_y_h = i2c_read(REG_FIFO);
-			accel_y_l = i2c_read(REG_FIFO);
-			accel_z_h = i2c_read(REG_FIFO);
-			accel_z_l = i2c_read(REG_FIFO);
-      temp_h = i2c_read(REG_FIFO);                                                                                            
-			temp_l= i2c_read(REG_FIFO);
+		
+      		accel_x_h = i2c_read(REG_FIFO);
+		accel_x_l = i2c_read(REG_FIFO);
+		accel_y_h = i2c_read(REG_FIFO);
+		accel_y_l = i2c_read(REG_FIFO);
+		accel_z_h = i2c_read(REG_FIFO);
+		accel_z_l = i2c_read(REG_FIFO);
+		}
       */
+		
+    
+ 	while(1)
+ 	{
+
       
       //ask for the registers over i2c instead. bitshifting high to left by 8 spots, ORing lowers
-      int16_t X = i2c_read(0x43) << 8 | i2c_read(0x44); //Read X registers
-      int16_t Y = i2c_read(0x45) << 8 | i2c_read(0x46); //Read Y registers
-      int16_t Z = i2c_read(0x47) << 8 | i2c_read(0x48); //Read Z registers
+		int16_t X = i2c_read(0x43) << 8 | i2c_read(0x44); //Read X registers
+      		int16_t Y = i2c_read(0x45) << 8 | i2c_read(0x46); //Read Y registers
+      		int16_t Z = i2c_read(0x47) << 8 | i2c_read(0x48); //Read Z registers
+      		
+	        int16_t AX = i2c_read(0x3B) << 8 | i2c_read(0x3C); //Read X registers
+	        int16_t AY = i2c_read(0x3D) << 8 | i2c_read(0x3E); //Read Y registers
+	        int16_t AZ = i2c_read(0x3F) << 8 | i2c_read(0x40); //Read Z registers
       
-      int16_t AX = i2c_read(0x3B) << 8 | i2c_read(0x3C); //Read X registers
-      int16_t AY = i2c_read(0x3D) << 8 | i2c_read(0x3E); //Read Y registers
-      int16_t AZ = i2c_read(0x3F) << 8 | i2c_read(0x40); //Read Z registers
-      
-      
-      
-      X = (round(X - gr_off) * 1000.0 / GYRO_SENS ) / 1000.0;
-      Y = (round(Y - gp_off) * 1000.0 / GYRO_SENS ) / 1000.0;
-      Z = (round(Z - gy_off) * 1000.0 / GYRO_SENS ) / 1000.0;
-      
-      AX = two_complement_to_int(AX);
-      AY = two_complement_to_int(AY);
-      AZ = two_complement_to_int(AZ);
-      
-      _accel_angle[0] = atan2(AZ, AY) * RAD_T_DEG - 90.0;
-      _accel_angle[1] = atan2(AZ, AX) * RAD_T_DEG - 90.0;
-      
-      /*
-			x_accel= two_complement_to_int(accel_x_h,accel_x_l);
-			x_accel_g = ((float) x_accel)/16384;
+	        X = (round(X - gx_off) * 1000.0 / GYRO_SENS ) / 1000.0;
+	        Y = (round(Y - gy_off) * 1000.0 / GYRO_SENS ) / 1000.0;
+	        Z = (round(Z - gz_off) * 1000.0 / GYRO_SENS ) / 1000.0;
 
-			y_accel= two_complement_to_int(accel_y_h,accel_y_l);
-			y_accel_g = ((float) y_accel)/16384;
+	        AX = two_complement_to_int(AX); //complement because the datasheet says so
+	        AY = two_complement_to_int(AY);
+	        AZ = two_complement_to_int(AZ);
 
-			z_accel= two_complement_to_int(accel_z_h,accel_z_l);
-			z_accel_g = ((float) z_accel)/16384;
+	        _accel_angle[0] = atan2(AZ, AY) * RAD_T_DEG - 90.0;
+	        _accel_angle[1] = atan2(AZ, AX) * RAD_T_DEG - 90.0;
 
-			temp = two_complement_to_int(temp_h, temp_l);
-			temp_f = (float)temp/340 + 36.53; // calculated as described in the MPU60%) register map document
-
-			printf("x_accel %.3fg	y_accel %.3fg	z_accel %.3fg	temp=%.1fc         \r", x_accel_g, y_accel_g, z_accel_g, temp_f);*/
-      printf("curr Y = %.3f  --  ", _accel_angle[1]);
-      printf("curr X = %.3f", _accel_angle[0]);
-    
-      printf("\r");
-		
+	        printf("curr Y = %.3f  --  ", _accel_angle[1]);
+	        printf("curr X = %.3f", _accel_angle[0]);
+		/*
+		if(flag)
+      		{
+			flag = 0;
+			firstmeasurex = _accel_angle[0];
+			firstmeasurey = _accel_angle[1];
+	  	}
+		*/
+		/*
+		if(_accel_angle[0] > firstmeasurex + 30)
+		{
+		  printf("verder dan begin x\n");
 		}
+		if (_accel_angle[1] > firstmeasurey + 30)
+		{
+		  printf("verder dan begin y\n");
+		}
+		if (_accel_angle[1] < firstmeasurey - 30)
+		{
+		  printf("negatief verder dan begin y\n");
+		}
+		if(_accel_angle[0] < firstmeasurex - 30)
+		{
+		  printf("negatief ver dan begin x\n");
+		}
+		*/
+      		printf("\r");
 
-	
+    }
 
-	return 0;
+return 0;
 }
