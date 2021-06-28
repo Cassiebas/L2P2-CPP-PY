@@ -10,7 +10,7 @@
 #include <stdint.h>
 #include <math.h>
 
-#define MPU6050_I2C_ADDR 0x68
+#define MPU6050_I2C_ADDR 0x68		//from the datasheet
 #define REG_ACCEL_ZOUT_H 0x3F
 #define REG_ACCEL_ZOUT_L 0x40
 #define REG_PWR_MGMT_1 0x6B
