@@ -31,7 +31,7 @@
 class mpu6050 {
 	public :
 	void i2c_write(__u8 reg_address, __u8 val);
-	char i2c_read(uint8_t reg_address);
+	char i2c_read(uint8_t reg_address);		//uint8_t is the same as a byte
 	char bus_filename[250];
 	int file;
 	void MPUinit();
