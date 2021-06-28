@@ -15,7 +15,7 @@ class accelerometer: public mpu6050 {
 		void getfirst();
 		void bringtodeg();
 		
-		int16_t AX;
+		int16_t AX;	    //int_16t: with no padding bits and using 2's complement for negative values
 		int16_t AY;
 		int16_t AZ;
 		int16_t signed_int; //for complementary
